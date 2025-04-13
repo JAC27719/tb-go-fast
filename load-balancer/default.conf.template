@@ -1,0 +1,15 @@
+upstream all {
+    server ${SERVER_HOST_1}:${SERVER_PORT_1};
+    server ${SERVER_HOST_2}:${SERVER_PORT_2};
+    server ${SERVER_HOST_3}:${SERVER_PORT_3};
+}
+
+server {
+    listen ${NGINX_PORT};
+    server_name ${NGINX_HOST};
+    location / {
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Host $host;
+        proxy_pass http://all;
+    }
+}

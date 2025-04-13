@@ -1,0 +1,49 @@
+version: "1.0"
+services:
+  server1:
+    image: server1
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: ${SERVER_HOST_1}
+    restart: always
+    environment:
+      SERVER_HOST: ${SERVER_HOST_1}
+      SERVER_PORT: ${SERVER_PORT_1}
+
+  server2:
+    image: server2
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: ${SERVER_HOST_2}
+    restart: always
+    environment:
+      SERVER_HOST: ${SERVER_HOST_2}
+      SERVER_PORT: ${SERVER_PORT_2}
+
+  server3:
+    image: server3
+    build:
+      context: ./src
+      dockerfile: Dockerfile
+    container_name: ${SERVER_HOST_3}
+    restart: always
+    environment:
+      SERVER_HOST: ${SERVER_HOST_3}
+      SERVER_PORT: ${SERVER_PORT_3}
+
+  load-balancer:
+    image: load-balancer
+    build:
+      context: ./load-balancer
+      dockerfile: Dockerfile
+    container_name: ${NGINX_HOST}
+    restart: always
+    env_file: .env
+    ports:
+      - ${NGINX_PORT}:${NGINX_PORT}
+    depends_on:
+      - server1
+      - server2
+      - server3
