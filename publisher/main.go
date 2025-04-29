@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	//"strconv"
 
 	"solace.dev/go/messaging"
@@ -15,46 +17,48 @@ import (
 	"solace.dev/go/messaging/pkg/solace/resource"
 )
 
-// Define Topic Prefix
-const TopicPrefix = "solace/weather"
-
-type TemperatureSensor struct {
-	T float32 //Temp in degrees C
-	H float32 //Humidity in percentage
-}
-
 type GenericMessageHandler struct {
 	directPublisher  solace.DirectMessagePublisher
 	messagingService solace.MessagingService
-	msgSeqNum        int
+	sensor           ISensor
+	topic            string
 }
 
-func (h *GenericMessageHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	sensor := new(TemperatureSensor)
-	sensor.T = 15
-	sensor.H = 35
-	messageBody, err := json.Marshal(sensor)
+func (h *GenericMessageHandler) SendReadig(c *gin.Context) {
+	if err := c.BindJSON(&h.sensor); err != nil {
+		fmt.Println(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+
+	readings, err := h.sensor.Read()
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+	}
+	messageBody, err := json.Marshal(readings)
+	if err != nil {
+		fmt.Println(err)
+		c.AbortWithStatus(http.StatusBadRequest)
 	}
 	messageBuilder := h.messagingService.MessageBuilder().
 		WithProperty("application", "go_pub").
 		WithProperty("language", "go")
 	message, err := messageBuilder.BuildWithByteArrayPayload(messageBody)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		c.AbortWithStatus(http.StatusBadRequest)
 	}
 
-	topic := resource.TopicOf(TopicPrefix)
+	topic := resource.TopicOf(h.topic)
 
 	// Publish on dynamic topic with dynamic body
 	publishErr := h.directPublisher.Publish(message, topic)
 	if publishErr != nil {
-		panic(publishErr)
+		fmt.Println(err)
+		c.AbortWithStatus(http.StatusBadRequest)
 	}
 
-	fmt.Fprintf(w, "Hello from %v:%v", SERVER_HOST, SERVER_PORT)
-	h.msgSeqNum++
+	c.IndentedJSON(http.StatusOK, h.sensor)
 }
 
 func ReconnectionHandler(e solace.ServiceEvent) {
@@ -138,11 +142,22 @@ func main() {
 		fmt.Println("SERVER_PORT is not set")
 	}
 
-	handler := new(GenericMessageHandler)
-	handler.directPublisher = directPublisher
-	handler.messagingService = messagingService
-	http.Handle("/", handler)
-
 	fmt.Printf("Server listening on %v:%v...\n", SERVER_HOST, SERVER_PORT)
-	http.ListenAndServe(":"+SERVER_PORT, nil)
+
+	bme280Handler := new(GenericMessageHandler)
+	bme280Handler.directPublisher = directPublisher
+	bme280Handler.messagingService = messagingService
+	bme280Handler.sensor = &BME280{}
+	bme280Handler.topic = "bme280"
+
+	capacitiveVWCHandler := new(GenericMessageHandler)
+	capacitiveVWCHandler.directPublisher = directPublisher
+	capacitiveVWCHandler.messagingService = messagingService
+	capacitiveVWCHandler.sensor = &CapacitiveVWC{}
+	capacitiveVWCHandler.topic = "capacitivevwc"
+
+	router := gin.Default()
+	router.POST("/bme280", bme280Handler.SendReadig)
+	router.POST("/capacitivevwc", capacitiveVWCHandler.SendReadig)
+	router.Run(SERVER_HOST + ":" + SERVER_PORT)
 }
